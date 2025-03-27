@@ -197,33 +197,46 @@ pub struct DefaultSettings<T: FloatT> {
     /// The callback receives a slice of the decision vector `x` and the iteration number.
     #[builder(default = "None")]
     #[serde(skip)]
-    pub callback: Option<CallbackWrapper<T>>,
+    pub on_iteration: Option<IterationCallback<T>>,
+}
+
+/// Clonable Callback Wrapper
+pub trait CloneableFnMut<T>: FnMut(&[T], u32) -> Result<(), String> + Send + Sync {
+    /// Clone the callback function.
+    fn clone_box(&self) -> Box<dyn CloneableFnMut<T>>;
+}
+
+impl<T, F> CloneableFnMut<T> for F
+where
+    F: FnMut(&[T], u32) -> Result<(), String> + Clone + Send + Sync + 'static,
+{
+    fn clone_box(&self) -> Box<dyn CloneableFnMut<T>> {
+        Box::new(self.clone())
+    }
 }
 
 /// A wrapper for the callback to implement Debug and Clone
+/// return false to stop the solver
 #[derive(Default)]
-pub struct CallbackWrapper<T>(pub Option<Box<dyn FnMut(&[T], u32) -> bool + Send + Sync>>);
+pub struct IterationCallback<T>(pub Option<Box<dyn CloneableFnMut<T>>>);
 
-impl<T> CallbackWrapper<T> {
-    /// Creates a new `CallbackWrapper` with the provided callback function.
-    pub fn new<F>(callback: F) -> Self
-    where
-        F: FnMut(&[T], u32) -> bool + Send + Sync + 'static,
-    {
-        CallbackWrapper(Some(Box::new(callback)))
+impl<T> IterationCallback<T> {
+    /// Creates a new `IterationCallback` with the provided callback function.
+    pub fn new(callback: Box<dyn CloneableFnMut<T>>) -> Self {
+        IterationCallback(Some(callback))
     }
 }
 
-impl<T> Clone for CallbackWrapper<T> {
+// 4. Implement Clone for IterationCallback using clone_box.
+impl<T> Clone for IterationCallback<T> {
     fn clone(&self) -> Self {
-        // Cloning a `Box<dyn FnMut>` is not directly possible, so we clone the `Option` as `None`.
-        CallbackWrapper(None)
+        IterationCallback(self.0.as_ref().map(|callback| callback.clone_box()))
     }
 }
 
-impl<T> std::fmt::Debug for CallbackWrapper<T> {
+impl<T> std::fmt::Debug for IterationCallback<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CallbackWrapper").finish()
+        f.debug_struct("IterationCallback").finish()
     }
 }
 

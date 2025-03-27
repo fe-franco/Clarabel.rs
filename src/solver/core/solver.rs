@@ -37,6 +37,8 @@ pub enum SolverStatus {
     NumericalError,
     /// Solver terminated due to lack of progress.
     InsufficientProgress,
+    /// Solver terminated due to on_iteration callback.
+    CallbackTermination,
 }
 
 impl SolverStatus {
@@ -381,12 +383,13 @@ where
             let current_x = current_variables.get_variables();
 
 
-            // if callback is provided, call it, use current_x and iter
-            if let Some(ref mut callback_wrapper) = self.settings.core_mut().callback {
+            // if on_iteration is provided, call it with the current decision vector and iteration count.
+            if let Some(ref mut callback_wrapper) = self.settings.core_mut().on_iteration {
                 if let Some(ref mut callback) = callback_wrapper.0 {
-                    // Call the callback with the current decision vector and iteration count.
-                    // If the callback returns `true`, then break out of the loop early.
-                    if callback(current_x, iter) {
+                    // If the callback returns `false`, then stop the solver.
+                    if let Err(err) = callback(current_x, iter) {
+                        println!("Callback returned an error: {}", err);
+                        self.info.set_status(SolverStatus::CallbackTermination);
                         break;
                     }
                 }

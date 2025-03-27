@@ -282,6 +282,7 @@ pub enum PySolverStatus {
     MaxTime,
     NumericalError,
     InsufficientProgress,
+    CallbackTermination,
 }
 
 impl From<&SolverStatus> for PySolverStatus {
@@ -298,6 +299,7 @@ impl From<&SolverStatus> for PySolverStatus {
             SolverStatus::MaxTime => PySolverStatus::MaxTime,
             SolverStatus::NumericalError => PySolverStatus::NumericalError,
             SolverStatus::InsufficientProgress => PySolverStatus::InsufficientProgress,
+            SolverStatus::CallbackTermination => PySolverStatus::CallbackTermination,
         }
     }
 }
@@ -317,6 +319,7 @@ impl PySolverStatus {
             PySolverStatus::MaxTime => "MaxTime",
             PySolverStatus::NumericalError => "NumericalError",
             PySolverStatus::InsufficientProgress => "InsufficientProgress",
+            PySolverStatus::CallbackTermination => "CallbackTermination",
         }
         .to_string()
     }
@@ -438,11 +441,13 @@ pub struct PyDefaultSettings {
     pub chordal_decomposition_compact: bool,
     #[pyo3(get, set)]
     pub chordal_decomposition_complete_dual: bool,
-    // Added callback field so Python can supply a callback.
+    // on_iteration field so Python can supply a on_iteration callback.
     #[pyo3(get, set)]
-    pub callback: Option<PyObject>,
+    pub on_iteration: Option<PyObject>,
 }
 
+// Manually implement Clone for PyDefaultSettings to handle the PyObject field.
+// Probably would be better to use a custom PyO3 type that implements clone?
 impl Clone for PyDefaultSettings {
     fn clone(&self) -> Self {
         Python::with_gil(|py| PyDefaultSettings {
@@ -488,7 +493,7 @@ impl Clone for PyDefaultSettings {
             chordal_decomposition_merge_method: self.chordal_decomposition_merge_method.clone(),
             chordal_decomposition_compact: self.chordal_decomposition_compact,
             chordal_decomposition_complete_dual: self.chordal_decomposition_complete_dual,
-            callback: self.callback.as_ref().map(|cb| cb.clone_ref(py)),
+            on_iteration: self.on_iteration.as_ref().map(|cb| cb.clone_ref(py)),
         })
     }
 }
@@ -565,44 +570,45 @@ impl From<&DefaultSettings<f64>> for PyDefaultSettings {
             chordal_decomposition_merge_method: set.chordal_decomposition_merge_method.clone(),
             chordal_decomposition_compact: set.chordal_decomposition_compact,
             chordal_decomposition_complete_dual: set.chordal_decomposition_complete_dual,
-            // Cannot recover a Python callback from the internal settings.
-            callback: None,
+            // Cannot recover a Python on_iteration callback from the internal settings.
+            on_iteration: None,
         }
     }
 }
 
-/// --- Helper Function ---
-/// Convert a Python callback (PyObject) into a Rust CallbackWrapper<f64>
-fn python_callback_to_rust(py_callback: PyObject) -> CallbackWrapper<f64> {
-    CallbackWrapper(Some(Box::new(move |x: &[f64], iter: u32| -> bool {
+#[derive(Debug)]
+struct PyObjCloneable(PyObject);
+
+impl Clone for PyObjCloneable {
+    fn clone(&self) -> Self {
+        Python::with_gil(|py| PyObjCloneable(self.0.clone_ref(py)))
+    }
+}
+
+/// Convert a Python callback into a Rust `IterationCallback<f64>` without using Arc.
+fn python_on_iteration_to_rust(py_on_iteration: PyObject) -> IterationCallback<f64> {
+    // Wrap the PyObject in our custom cloneable wrapper.
+    let py_on_iteration = PyObjCloneable(py_on_iteration);
+    IterationCallback(Some(Box::new(move |x, iter| {
+        // Clone the wrapper; this safely increases the Python object's refcount.
+        let py_on_iteration = py_on_iteration.clone().0;
         Python::with_gil(|py| {
-            // Convert the slice to a Python list using into_pyobject and handle errors
+            // Convert the slice to a Python list using into_pyobject and handle errors.
             let x_py = match x.to_vec().into_pyobject(py) {
                 Ok(obj) => obj,
                 Err(err) => {
                     err.print(py);
-                    return false;
+                    return Err("Failed to convert Rust slice to Python object".to_string());
                 }
             };
             // Build the arguments tuple: (x, iteration)
             let args = (x_py, iter);
-            // Call the Python callback and try to extract an Option<bool>
-            match py_callback.call1(py, args) {
-                Ok(result) => {
-                    // Extract Option<bool>: if the callback returns None, opt_b will be None.
-                    match result.extract::<Option<bool>>(py) {
-                        Ok(opt_b) => opt_b.unwrap_or(false),
-                        Err(err) => {
-                            err.print(py);
-                            false
-                        }
-                    }
-                }
-                Err(e) => {
-                    e.print(py);
-                    false
-                }
+            // Call the Python on_iteration and ignore its return value.
+            if let Err(e) = py_on_iteration.call1(py, args) {
+                e.print(py);
+                return Err(e.to_string());
             }
+            Ok(())
         })
     })))
 }
@@ -610,10 +616,10 @@ fn python_callback_to_rust(py_callback: PyObject) -> CallbackWrapper<f64> {
 impl PyDefaultSettings {
     pub(crate) fn to_internal(&self) -> Result<DefaultSettings<f64>, PyErr> {
         // convert python settings -> Rust
-        let callback_converted = self
-            .callback
+        let on_iteration_converted = self
+            .on_iteration
             .as_ref()
-            .map(|cb| Python::with_gil(|py| python_callback_to_rust(cb.clone_ref(py).into())));
+            .map(|cb| Python::with_gil(|py| python_on_iteration_to_rust(cb.clone_ref(py).into())));
 
         let settings = DefaultSettings::<f64> {
             max_iter: self.max_iter,
@@ -658,7 +664,7 @@ impl PyDefaultSettings {
             chordal_decomposition_merge_method: self.chordal_decomposition_merge_method.clone(),
             chordal_decomposition_compact: self.chordal_decomposition_compact,
             chordal_decomposition_complete_dual: self.chordal_decomposition_complete_dual,
-            callback: callback_converted,
+            on_iteration: on_iteration_converted,
         };
 
         //manually validate settings from Python side
