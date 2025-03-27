@@ -269,6 +269,10 @@ where
             set.equilibrate_max_iter,
         )?;
 
+        if let Some(_) = set.on_iteration {
+            writeln!(out, "  on_iteration: defined")?;
+        }
+
         writeln!(out,)?;
 
         std::io::Result::Ok(())
