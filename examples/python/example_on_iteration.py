@@ -334,9 +334,12 @@ def main():
     settings.verbose = True
     settings.max_iter = 1000
 
-    def callback(x, iter):
+    def callback(variables, iter):
         global iteration_counter, iteration_data, current_iteration_index
         iteration_counter = iter
+        
+        # variables is a tuple of (x, y, z) where x is the current solution
+        x = variables[0]
 
         total_allocation_per_investment = np.array(x).reshape((weeks, N)).sum(axis=0)
         top_indices = np.argsort(total_allocation_per_investment)[::-1][:10]

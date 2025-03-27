@@ -380,14 +380,14 @@ where
             let mut current_variables = self.variables.clone();
             current_variables.unscale(&self.data, self.info.get_status().is_infeasible());
 
-            let current_x = current_variables.get_variables();
+            let variables = current_variables.get_variables();
 
 
             // if on_iteration is provided, call it with the current decision vector and iteration count.
             if let Some(ref mut callback_wrapper) = self.settings.core_mut().on_iteration {
                 if let Some(ref mut callback) = callback_wrapper.0 {
                     // If the callback returns `false`, then stop the solver.
-                    if let Err(err) = callback(current_x, iter) {
+                    if let Err(err) = callback(variables, iter) {
                         println!("Callback returned an error: {}", err);
                         self.info.set_status(SolverStatus::CallbackTermination);
                         break;

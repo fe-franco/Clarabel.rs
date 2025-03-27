@@ -201,14 +201,16 @@ pub struct DefaultSettings<T: FloatT> {
 }
 
 /// Clonable Callback Wrapper
-pub trait CloneableFnMut<T>: FnMut(&[T], u32) -> Result<(), String> + Send + Sync {
+pub trait CloneableFnMut<T>:
+    FnMut((&[T], &[T], &[T]), u32) -> Result<(), String> + Send + Sync
+{
     /// Clone the callback function.
     fn clone_box(&self) -> Box<dyn CloneableFnMut<T>>;
 }
 
 impl<T, F> CloneableFnMut<T> for F
 where
-    F: FnMut(&[T], u32) -> Result<(), String> + Clone + Send + Sync + 'static,
+    F: FnMut((&[T], &[T], &[T]), u32) -> Result<(), String> + Clone + Send + Sync + 'static,
 {
     fn clone_box(&self) -> Box<dyn CloneableFnMut<T>> {
         Box::new(self.clone())

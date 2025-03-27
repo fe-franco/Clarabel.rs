@@ -91,7 +91,7 @@ pub trait Variables<T: FloatT> {
     fn rescale(&mut self);
 
     /// Get the current values of the variables
-    fn get_variables(&self) -> &[T];
+    fn get_variables(&self) -> (&[T], &[T], &[T]);
 
     /// Clone the variables
     fn clone(&self) -> Self;

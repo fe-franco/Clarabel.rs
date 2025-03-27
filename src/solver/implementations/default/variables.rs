@@ -161,8 +161,8 @@ where
         self.κ += α * step.κ;
     }
 
-    fn get_variables(&self) -> &[T] {
-        &self.x
+    fn get_variables(&self) -> (&[T], &[T], &[T]) {
+        (&self.x, &self.s, &self.z)
     }
 
     fn clone(&self) -> Self {
