@@ -528,6 +528,7 @@ impl From<&DefaultSettings<f64>> for PyDefaultSettings {
 impl PyDefaultSettings {
     pub(crate) fn to_internal(&self) -> Result<DefaultSettings<f64>, PyErr> {
         // convert python settings -> Rust
+
         let settings = DefaultSettings::<f64> {
             max_iter: self.max_iter,
             time_limit: self.time_limit,
