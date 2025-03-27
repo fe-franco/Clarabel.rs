@@ -7,7 +7,7 @@ use super::*;
 use crate::{
     algebra::CscMatrix,
     io::*,
-    python::on_iteration::python_on_iteration_to_rust,
+    python::on_iteration::{python_on_iteration_to_rust, PyObjCloneable},
     solver::{
         core::{
             kktsolvers::LinearSolverInfo,
@@ -335,7 +335,7 @@ impl PySolverStatus {
 // Solver Settings
 // ----------------------------------
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[pyclass(name = "DefaultSettings")]
 pub struct PyDefaultSettings {
     #[pyo3(get, set)]
@@ -444,59 +444,7 @@ pub struct PyDefaultSettings {
     pub chordal_decomposition_complete_dual: bool,
     // on_iteration field so Python can supply a on_iteration callback.
     #[pyo3(get, set)]
-    pub on_iteration: Option<PyObject>,
-}
-
-// Manually implement Clone for PyDefaultSettings to handle the PyObject field.
-// Probably would be better to use a custom PyO3 type that implements clone?
-impl Clone for PyDefaultSettings {
-    fn clone(&self) -> Self {
-        Python::with_gil(|py| PyDefaultSettings {
-            max_iter: self.max_iter,
-            time_limit: self.time_limit,
-            verbose: self.verbose,
-            max_step_fraction: self.max_step_fraction,
-            tol_gap_abs: self.tol_gap_abs,
-            tol_gap_rel: self.tol_gap_rel,
-            tol_feas: self.tol_feas,
-            tol_infeas_abs: self.tol_infeas_abs,
-            tol_infeas_rel: self.tol_infeas_rel,
-            tol_ktratio: self.tol_ktratio,
-            reduced_tol_gap_abs: self.reduced_tol_gap_abs,
-            reduced_tol_gap_rel: self.reduced_tol_gap_rel,
-            reduced_tol_feas: self.reduced_tol_feas,
-            reduced_tol_infeas_abs: self.reduced_tol_infeas_abs,
-            reduced_tol_infeas_rel: self.reduced_tol_infeas_rel,
-            reduced_tol_ktratio: self.reduced_tol_ktratio,
-            equilibrate_enable: self.equilibrate_enable,
-            equilibrate_max_iter: self.equilibrate_max_iter,
-            equilibrate_min_scaling: self.equilibrate_min_scaling,
-            equilibrate_max_scaling: self.equilibrate_max_scaling,
-            linesearch_backtrack_step: self.linesearch_backtrack_step,
-            min_switch_step_length: self.min_switch_step_length,
-            min_terminate_step_length: self.min_terminate_step_length,
-            max_threads: self.max_threads,
-            direct_kkt_solver: self.direct_kkt_solver,
-            direct_solve_method: self.direct_solve_method.clone(),
-            static_regularization_enable: self.static_regularization_enable,
-            static_regularization_constant: self.static_regularization_constant,
-            static_regularization_proportional: self.static_regularization_proportional,
-            dynamic_regularization_enable: self.dynamic_regularization_enable,
-            dynamic_regularization_eps: self.dynamic_regularization_eps,
-            dynamic_regularization_delta: self.dynamic_regularization_delta,
-            iterative_refinement_enable: self.iterative_refinement_enable,
-            iterative_refinement_reltol: self.iterative_refinement_reltol,
-            iterative_refinement_abstol: self.iterative_refinement_abstol,
-            iterative_refinement_max_iter: self.iterative_refinement_max_iter,
-            iterative_refinement_stop_ratio: self.iterative_refinement_stop_ratio,
-            presolve_enable: self.presolve_enable,
-            chordal_decomposition_enable: self.chordal_decomposition_enable,
-            chordal_decomposition_merge_method: self.chordal_decomposition_merge_method.clone(),
-            chordal_decomposition_compact: self.chordal_decomposition_compact,
-            chordal_decomposition_complete_dual: self.chordal_decomposition_complete_dual,
-            on_iteration: self.on_iteration.as_ref().map(|cb| cb.clone_ref(py)),
-        })
-    }
+    pub on_iteration: Option<PyObjCloneable>,
 }
 
 #[pymethods]
@@ -580,11 +528,6 @@ impl From<&DefaultSettings<f64>> for PyDefaultSettings {
 impl PyDefaultSettings {
     pub(crate) fn to_internal(&self) -> Result<DefaultSettings<f64>, PyErr> {
         // convert python settings -> Rust
-        let on_iteration_converted = self
-            .on_iteration
-            .as_ref()
-            .map(|cb| Python::with_gil(|py| python_on_iteration_to_rust(cb.clone_ref(py).into())));
-
         let settings = DefaultSettings::<f64> {
             max_iter: self.max_iter,
             time_limit: self.time_limit,
@@ -628,7 +571,12 @@ impl PyDefaultSettings {
             chordal_decomposition_merge_method: self.chordal_decomposition_merge_method.clone(),
             chordal_decomposition_compact: self.chordal_decomposition_compact,
             chordal_decomposition_complete_dual: self.chordal_decomposition_complete_dual,
-            on_iteration: on_iteration_converted,
+            on_iteration: self.on_iteration.as_ref().map(|cb| {
+                Python::with_gil(|py| {
+                    // Use the wrapper’s clone (which calls clone_ref under the hood)
+                    python_on_iteration_to_rust(cb.clone().into_pyobject(py).unwrap().into())
+                })
+            }),
         };
 
         //manually validate settings from Python side
