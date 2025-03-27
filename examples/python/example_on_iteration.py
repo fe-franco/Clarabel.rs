@@ -35,6 +35,9 @@ live_queue = queue.Queue()
 # Global variable for the animation object.
 animation_object = None
 
+# Store all iteration data for navigation.
+iteration_data = []
+current_iteration_index = 0
 
 def get_season_name(phase):
     """Map a phase (in radians) to a season name."""
@@ -150,53 +153,63 @@ def build_problem(N, weeks, B_total, gamma, base_r):
     return P_total, q_total, A_total, b_total, cones, r_weeks, P_weeks, phases
 
 
-#############################
-# Matplotlib Live Chart Setup
-#############################
-fig, ax = plt.subplots(figsize=(8, 6))
-
-
 def update_chart(frame):
     """
-    This function is called periodically by FuncAnimation.
-    It polls live_queue for the most recent update. If the solver has finished,
-    it displays the final update and stops the animation.
+    Update the chart based on the current iteration index.
+    Use the left and right arrow keys to navigate through iterations.
+    Press 'Escape' to close the chart.
     """
-    global solver_finished, final_data, animation_object
-    try:
-        data = None
-        while not live_queue.empty():
-            data = live_queue.get_nowait()
-        if data is not None:
-            if isinstance(data, str):
-                ax.clear()
-                ax.text(0.5, 0.5, data, fontsize=12, ha="center", va="center")
-            else:
-                iter_num, top_names, top_allocations = data
-                ax.clear()
-                bars = ax.bar(top_names, top_allocations, color="skyblue")
-                ax.set_title(f"Live Top 10 Investments at Iteration {iter_num}")
-                ax.set_ylabel("Total Annual Allocation")
-                ax.set_xlabel("Investment")
-                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-                for bar in bars:
-                    height = bar.get_height()
-                    ax.annotate(
-                        f"{height:.2f}",
-                        xy=(bar.get_x() + bar.get_width() / 2, height),
-                        xytext=(0, 3),
-                        textcoords="offset points",
-                        ha="center",
-                        va="bottom",
-                    )
-    except Exception as e:
-        print("Error updating chart:", e)
+    global solver_finished, final_data, current_iteration_index
 
-    if solver_finished and final_data is not None:
-        iter_num, final_names, final_allocs = final_data
-        ax.clear()
-        bars = ax.bar(final_names, final_allocs, color="lightgreen")
-        ax.set_title("Final Top 10 Investments")
+    ax.clear()
+
+    # Add navigation instructions as text in the matplotlib window
+    ax.text(
+        0.5, -0.25,  # Adjusted padding to prevent clipping
+        "Use Left/Right arrows to navigate iterations. Press 'Escape' to exit.",
+        fontsize=10,
+        ha="center",
+        va="center",
+        transform=ax.transAxes,
+        color="gray",
+    )
+
+    if 0 <= current_iteration_index < len(iteration_data):
+        # if last iteration, and final data is available, show final data
+        if current_iteration_index == len(iteration_data) - 1 and final_data is not None:
+            iter_num, final_names, final_allocs = final_data
+            bars = ax.bar(final_names, final_allocs, color="lightgreen")
+            ax.set_title("Final Top 10 Investments")
+            ax.set_ylabel("Total Annual Allocation")
+            ax.set_xlabel("Investment")
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+            for bar in bars:
+                height = bar.get_height()
+                ax.annotate(
+                    f"{height:.2f}",
+                    xy=(bar.get_x() + bar.get_width() / 2, height),
+                    xytext=(0, 3),
+                    textcoords="offset points",
+                    ha="center",
+                    va="bottom",
+                )
+            # Add navigation text for previous iteration
+            if len(iteration_data) > 1:
+                previus_iter_num = iteration_data[current_iteration_index - 1][0]
+                ax.text(
+                    0.01, 1.02,
+                    f"< Previous: Iteration {previus_iter_num}",
+                    fontsize=10,
+                    ha="left",
+                    va="center",
+                    transform=ax.transAxes,
+                    color="gray",
+                )
+            return ax
+
+        iter_num, top_names, top_allocations = iteration_data[current_iteration_index]
+        bars = ax.bar(top_names, top_allocations, color="skyblue")
+        ax.set_title(f"Top 10 Investments at Iteration {iter_num}/{iteration_counter}")
         ax.set_ylabel("Total Annual Allocation")
         ax.set_xlabel("Investment")
         plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
@@ -210,18 +223,64 @@ def update_chart(frame):
                 ha="center",
                 va="bottom",
             )
-        animation_object.event_source.stop()
+
+        # Add navigation text for previous and next iterations
+        if current_iteration_index > 0:
+            previus_iter_num = iteration_data[current_iteration_index - 1][0]
+            ax.text(
+                0.01, 1.02,
+                f"< Previous: Iteration {previus_iter_num}",
+                fontsize=10,
+                ha="left",
+                va="center",
+                transform=ax.transAxes,
+                color="gray",
+            )
+        if current_iteration_index < len(iteration_data) - 1:
+            if current_iteration_index == len(iteration_data) - 2 and solver_finished:
+                next_text = "Next: Final >"
+            else:
+                next_iter_num = iteration_data[current_iteration_index + 1][0]
+                next_text = f"Next: Iteration {next_iter_num} >"
+            ax.text(
+                0.99, 1.02,
+                next_text,
+                fontsize=10,
+                ha="right",
+                va="center",
+                transform=ax.transAxes,
+                color="gray",
+            )
+
+    # Adjust bottom padding to prevent label clipping
+    plt.subplots_adjust(bottom=0.2)
+    
+    # Adjust top padding to prevent navigation text clipping
+    plt.subplots_adjust(top=0.9)
     return ax
 
 
-#############################
-# Solver Thread Functions
-#############################
+def on_key(event):
+    """
+    Handle keyboard events to navigate through iterations.
+    """
+    global current_iteration_index
+
+    if event.key == "right":
+        current_iteration_index = min(current_iteration_index + 1, len(iteration_data) - 1)
+    elif event.key == "left":
+        current_iteration_index = max(current_iteration_index - 1, 0)
+    elif event.key == "escape":
+        plt.close(fig)
+    update_chart(None)
+    fig.canvas.draw()
+
+
 def run_solver_thread(P_total, q_total, A_total, b_total, cones, settings, weeks, N):
     """
     Run the solver (blocking call) and then compute final top-10 investments.
     """
-    global solver_finished, final_data, iteration_counter
+    global solver_finished, final_data, iteration_counter, iteration_data, fig,current_iteration_index
     result = clarabel.DefaultSolver(
         P_total, q_total, A_total, b_total, cones, settings
     ).solve()
@@ -243,10 +302,13 @@ def run_solver_thread(P_total, q_total, A_total, b_total, cones, settings, weeks
         final_allocs.append(total_allocation_per_investment[idx])
     final_data = (iteration_counter, final_names, final_allocs)
 
+    # Add the final iteration data to the iteration_data list for navigation
+    iteration_data.append(final_data)
+    
+    # Set the current iteration index to the last iteration
+    current_iteration_index = len(iteration_data) - 1
 
-#############################
-# Main Execution
-#############################
+
 def main():
     global investment_names, solver_finished, final_data, animation_object
 
@@ -273,7 +335,7 @@ def main():
     settings.max_iter = 1000
 
     def callback(x, iter):
-        global iteration_counter
+        global iteration_counter, iteration_data, current_iteration_index
         iteration_counter = iter
 
         total_allocation_per_investment = np.array(x).reshape((weeks, N)).sum(axis=0)
@@ -283,9 +345,13 @@ def main():
         for idx in top_indices:
             top_names.append(investment_names[idx])
             top_allocations.append(total_allocation_per_investment[idx])
-        live_queue.put((iter, top_names, top_allocations))
+        iteration_data.append((iter, top_names, top_allocations))
 
-    settings.callback = callback
+        # Update the current iteration index if it was on the last iteration
+        if current_iteration_index == len(iteration_data) - 2:
+            current_iteration_index = len(iteration_data) - 1
+
+    settings.on_iteration = callback
 
     # Start the solver in a separate thread.
     solver_thread = threading.Thread(
@@ -295,6 +361,13 @@ def main():
         daemon=True,
     )
     solver_thread.start()
+
+    # Create a figure and axis for the chart.
+    global fig, ax
+    fig, ax = plt.subplots(figsize=(10, 6))  # Set larger window size
+
+    # Connect the keyboard event handler.
+    fig.canvas.mpl_connect("key_press_event", on_key)
 
     # Set up matplotlib animation to update every 500 ms.
     animation_object = animation.FuncAnimation(fig, update_chart, interval=500, save_count=1000)
