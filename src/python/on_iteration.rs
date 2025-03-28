@@ -18,7 +18,7 @@ impl Clone for PyObjCloneable {
 pub fn python_on_iteration_to_rust(py_on_iteration: PyObject) -> IterationCallback<f64> {
     // Wrap the provided Python callback in our custom cloneable type.
     let py_on_iteration = PyObjCloneable(py_on_iteration);
-    IterationCallback(Some(Box::new(move |variables, iter| {
+    IterationCallback::new(move |variables, iter| {
         // Clone our wrapper so that the Python callback's refcount increases safely.
         let py_on_iteration = py_on_iteration.clone().0;
         Python::with_gil(|py| {
@@ -37,5 +37,5 @@ pub fn python_on_iteration_to_rust(py_on_iteration: PyObject) -> IterationCallba
                 .map(|_| ())
                 .map_err(|e| e.to_string())
         })
-    })))
+    })
 }
