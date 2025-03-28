@@ -210,7 +210,7 @@ fn test_qp_on_iteration_solved() {
     let (P, c, A, b, cones) = basic_qp_data();
 
     let settings = DefaultSettingsBuilder::default()
-        .on_iteration(Some(IterationCallback::new(Box::new(|variables, iter| {
+        .on_iteration(Some(IterationCallback::new(|variables, iter| {
             let (x, _, _) = variables;
             let expected_solutions = vec![
                 vec![0., 0.],
@@ -230,7 +230,7 @@ fn test_qp_on_iteration_solved() {
                 panic!("Unexpected iteration number, {}", iter);
             }
             Ok(())
-        }))))
+        })))
         .build()
         .unwrap();
 
@@ -247,7 +247,7 @@ fn test_qp_on_iteration_termination() {
     let (P, c, A, b, cones) = basic_qp_data();
 
     let settings = DefaultSettingsBuilder::default()
-        .on_iteration(Some(IterationCallback::new(Box::new(|variables, iter| {
+        .on_iteration(Some(IterationCallback::new(|variables, iter| {
             let (x, _, _) = variables;
             let expected_solutions = vec![
                 vec![0., 0.],
@@ -268,7 +268,7 @@ fn test_qp_on_iteration_termination() {
             }
             // return an error to terminate the solver
             Err("Manual termination".to_string())
-        }))))
+        })))
         .build()
         .unwrap();
 
