@@ -268,3 +268,23 @@ pub trait Settings<T: FloatT> {
     /// Return the core settings (mutably).
     fn core_mut(&mut self) -> &mut CoreSettings<T>;
 }
+
+/// A wrapper for the on_iteration callback to implement Debug and Clone
+/// return false to stop the solver
+#[derive(Default)]
+pub struct IterationCallback<T>(pub Option<Box<dyn CloneableFnMut<T>>>);
+
+impl<T> IterationCallback<T> {
+    /// Creates a new `IterationCallback` with the provided callback function.
+    pub fn new(callback: Box<dyn CloneableFnMut<T>>) -> Self {
+        IterationCallback(Some(callback))
+    }
+}
+
+/// Clonable function trait for the on_iteration callback
+pub trait CloneableFnMut<T>:
+    FnMut((&[T], &[T], &[T]), u32) -> Result<(), String> + Send + Sync
+{
+    /// Clone the callback function.
+    fn clone_box(&self) -> Box<dyn CloneableFnMut<T>>;
+}

@@ -1,5 +1,5 @@
 use crate::algebra::*;
-use crate::solver::core::traits::Settings;
+use crate::solver::core::traits::{IterationCallback, Settings};
 use derive_builder::Builder;
 
 #[cfg(feature = "serde")]
@@ -194,52 +194,10 @@ pub struct DefaultSettings<T: FloatT> {
     #[builder(default = "true")]
     pub chordal_decomposition_complete_dual: bool,
 
-    /// The callback receives a slice of the decision vector `x` and the iteration number.
+    /// The callback receives a tuple of the variables vectors (`x`, `s`, `z`)  and the `iteration` number.
     #[builder(default = "None")]
     #[serde(skip)]
     pub on_iteration: Option<IterationCallback<T>>,
-}
-
-/// Clonable Callback Wrapper
-pub trait CloneableFnMut<T>:
-    FnMut((&[T], &[T], &[T]), u32) -> Result<(), String> + Send + Sync
-{
-    /// Clone the callback function.
-    fn clone_box(&self) -> Box<dyn CloneableFnMut<T>>;
-}
-
-impl<T, F> CloneableFnMut<T> for F
-where
-    F: FnMut((&[T], &[T], &[T]), u32) -> Result<(), String> + Clone + Send + Sync + 'static,
-{
-    fn clone_box(&self) -> Box<dyn CloneableFnMut<T>> {
-        Box::new(self.clone())
-    }
-}
-
-/// A wrapper for the callback to implement Debug and Clone
-/// return false to stop the solver
-#[derive(Default)]
-pub struct IterationCallback<T>(pub Option<Box<dyn CloneableFnMut<T>>>);
-
-impl<T> IterationCallback<T> {
-    /// Creates a new `IterationCallback` with the provided callback function.
-    pub fn new(callback: Box<dyn CloneableFnMut<T>>) -> Self {
-        IterationCallback(Some(callback))
-    }
-}
-
-// 4. Implement Clone for IterationCallback using clone_box.
-impl<T> Clone for IterationCallback<T> {
-    fn clone(&self) -> Self {
-        IterationCallback(self.0.as_ref().map(|callback| callback.clone_box()))
-    }
-}
-
-impl<T> std::fmt::Debug for IterationCallback<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("IterationCallback").finish()
-    }
 }
 
 impl<T> Default for DefaultSettings<T>

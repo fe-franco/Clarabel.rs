@@ -8,6 +8,7 @@ mod equilibration;
 mod info;
 mod info_print;
 mod kktsystem;
+mod on_iteration;
 mod presolver;
 mod problemdata;
 mod residuals;

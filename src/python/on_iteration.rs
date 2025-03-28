@@ -1,4 +1,4 @@
-use crate::solver::IterationCallback;
+use crate::solver::traits::IterationCallback;
 use pyo3::conversion::IntoPyObject;
 use pyo3::prelude::*;
 

@@ -2,7 +2,10 @@
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_test::*;
 
-use clarabel::{algebra::*, solver::*};
+use clarabel::{
+    algebra::*,
+    solver::{traits::IterationCallback, *},
+};
 
 #[allow(clippy::type_complexity)]
 fn basic_qp_data() -> (
