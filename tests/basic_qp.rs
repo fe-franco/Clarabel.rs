@@ -2,7 +2,10 @@
 #[cfg(target_family = "wasm")]
 use wasm_bindgen_test::*;
 
-use clarabel::{algebra::*, solver::*};
+use clarabel::{
+    algebra::*,
+    solver::{traits::IterationCallback, *},
+};
 
 #[allow(clippy::type_complexity)]
 fn basic_qp_data() -> (
@@ -199,6 +202,81 @@ fn test_qp_dual_infeasible_ill_cond() {
     assert_eq!(solver.solution.status, SolverStatus::DualInfeasible);
     assert!(solver.solution.obj_val.is_nan());
     assert!(solver.solution.obj_val_dual.is_nan());
+}
+
+// test on_iteration setting for the solver (Solved status)
+#[test]
+fn test_qp_on_iteration_solved() {
+    let (P, c, A, b, cones) = basic_qp_data();
+
+    let settings = DefaultSettingsBuilder::default()
+        .on_iteration(Some(IterationCallback::new(|variables, iter| {
+            let (x, _, _) = variables;
+            let expected_solutions = vec![
+                vec![0., 0.],
+                vec![0.2664559280339765, 0.3065174176306048],
+                vec![0.33548711245893453, 0.4962695478188359],
+                vec![0.3676798527210997, 0.6304149372234491],
+                vec![0.32058732517532107, 0.6794575305326703],
+                vec![0.3052880291102464, 0.6947234736690988],
+                vec![0.3007946771942005, 0.6992065833388865],
+                vec![0.30002821498505206, 0.6999718199802623],
+                vec![0.30000030786168963, 0.6999996925101121],
+            ];
+
+            if let Some(expected) = expected_solutions.get(iter as usize) {
+                assert_eq!(x, *expected);
+            } else {
+                panic!("Unexpected iteration number, {}", iter);
+            }
+            Ok(())
+        })))
+        .build()
+        .unwrap();
+
+    let mut solver = DefaultSolver::new(&P, &c, &A, &b, &cones, settings);
+
+    solver.solve();
+
+    assert_eq!(solver.solution.status, SolverStatus::Solved);
+}
+
+// test on_iteration setting for the solver (CallbackTermination status)
+#[test]
+fn test_qp_on_iteration_termination() {
+    let (P, c, A, b, cones) = basic_qp_data();
+
+    let settings = DefaultSettingsBuilder::default()
+        .on_iteration(Some(IterationCallback::new(|variables, iter| {
+            let (x, _, _) = variables;
+            let expected_solutions = vec![
+                vec![0., 0.],
+                vec![0.2664559280339765, 0.3065174176306048],
+                vec![0.33548711245893453, 0.4962695478188359],
+                vec![0.3676798527210997, 0.6304149372234491],
+                vec![0.32058732517532107, 0.6794575305326703],
+                vec![0.3052880291102464, 0.6947234736690988],
+                vec![0.3007946771942005, 0.6992065833388865],
+                vec![0.30002821498505206, 0.6999718199802623],
+                vec![0.30000030786168963, 0.6999996925101121],
+            ];
+
+            if let Some(expected) = expected_solutions.get(iter as usize) {
+                assert_eq!(x, *expected);
+            } else {
+                panic!("Unexpected iteration number, {}", iter);
+            }
+            // return an error to terminate the solver
+            Err("Manual termination".to_string())
+        })))
+        .build()
+        .unwrap();
+
+    let mut solver = DefaultSolver::new(&P, &c, &A, &b, &cones, settings);
+
+    solver.solve();
+
+    assert_eq!(solver.solution.status, SolverStatus::CallbackTermination);
 }
 
 // a minimal test to check that the wasm build is working

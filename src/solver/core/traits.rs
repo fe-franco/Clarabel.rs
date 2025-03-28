@@ -89,6 +89,15 @@ pub trait Variables<T: FloatT> {
     /// Rescale variables, e.g. to renormalize iterates
     /// in a homogeneous embedding
     fn rescale(&mut self);
+
+    /// Get the current values of the variables
+    fn get_variables(&self) -> (&[T], &[T], &[T]);
+
+    /// Clone the variables
+    fn clone(&self) -> Self;
+
+    /// Unscale the variables
+    fn unscale(&mut self, data: &Self::D, is_infeasible: bool);
 }
 
 /// Residuals for a conic optimization problem.
@@ -251,11 +260,33 @@ pub trait Solution<T: FloatT> {
 /// Implementers of this trait can define any internal or problem
 /// specific settings they wish.   They must, however, also maintain
 /// a settings object of type [`CoreSettings`](crate::solver::core::CoreSettings)
-/// and return this to the solver internally.   
+/// and return this to the solver internally.
 pub trait Settings<T: FloatT> {
     /// Return the core settings.
     fn core(&self) -> &CoreSettings<T>;
 
     /// Return the core settings (mutably).
     fn core_mut(&mut self) -> &mut CoreSettings<T>;
+}
+
+/// Wrapper for the on_iteration callback to implementing Default, Debug and Clone.
+///
+/// Returns a Result<(), String> to allow for early termination of the solver
+/// by returning an error.
+#[derive(Default)]
+pub struct IterationCallback<T>(pub Option<Box<dyn CloneableFnMut<T>>>);
+
+impl<T> IterationCallback<T> {
+    /// Creates a new `IterationCallback` with the provided callback function, using a boxed trait object.
+    pub fn new(callback: impl CloneableFnMut<T> + 'static) -> Self {
+        IterationCallback(Some(Box::new(callback)))
+    }
+}
+
+/// Clonable function trait for the on_iteration callback
+pub trait CloneableFnMut<T>:
+    FnMut((&[T], &[T], &[T]), u32) -> Result<(), String> + Send + Sync
+{
+    /// Clone the callback function.
+    fn clone_box(&self) -> Box<dyn CloneableFnMut<T>>;
 }

@@ -1,5 +1,5 @@
 use crate::algebra::*;
-use crate::solver::core::traits::Settings;
+use crate::solver::core::traits::{IterationCallback, Settings};
 use derive_builder::Builder;
 
 #[cfg(feature = "serde")]
@@ -176,7 +176,7 @@ pub struct DefaultSettings<T: FloatT> {
     #[builder(default = "true")]
     pub chordal_decomposition_enable: bool,
 
-    ///chordal decomposition merge method ("none", "parent_child" or "clique_graph").  
+    ///chordal decomposition merge method ("none", "parent_child" or "clique_graph").
     /// [requires "sdp" feature.]
     #[cfg(feature = "sdp")]
     #[builder(default = r#""clique_graph".to_string()"#)]
@@ -193,6 +193,11 @@ pub struct DefaultSettings<T: FloatT> {
     #[cfg(feature = "sdp")]
     #[builder(default = "true")]
     pub chordal_decomposition_complete_dual: bool,
+
+    /// The callback receives a tuple of the variables vectors (`x`, `s`, `z`)  and the `iteration` number.
+    #[builder(default = "None")]
+    #[serde(skip)]
+    pub on_iteration: Option<IterationCallback<T>>,
 }
 
 impl<T> Default for DefaultSettings<T>

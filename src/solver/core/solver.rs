@@ -37,6 +37,8 @@ pub enum SolverStatus {
     NumericalError,
     /// Solver terminated due to lack of progress.
     InsufficientProgress,
+    /// Solver terminated due to on_iteration callback.
+    CallbackTermination,
 }
 
 impl SolverStatus {
@@ -66,7 +68,7 @@ pub enum StepDirection {
 }
 
 /// Scaling strategy used by the solver when
-/// linearizing centrality conditions.  
+/// linearizing centrality conditions.
 #[repr(u32)]
 #[derive(PartialEq, Eq, Clone, Debug, Copy)]
 pub enum ScalingStrategy {
@@ -373,6 +375,25 @@ where
 
             // Copy previous iterate in case the next one is a dud
             self.info.save_prev_iterate(&self.variables,&mut self.prev_vars);
+
+            // Obtain the scaled decision vector.
+            let mut current_variables = self.variables.clone();
+            current_variables.unscale(&self.data, self.info.get_status().is_infeasible());
+
+            let variables = current_variables.get_variables();
+
+
+            // if on_iteration is provided, call it with the current decision vector and iteration count.
+            if let Some(ref mut callback_wrapper) = self.settings.core_mut().on_iteration {
+                if let Some(ref mut callback) = callback_wrapper.0 {
+                    // If the callback returns `false`, then stop the solver.
+                    if let Err(err) = callback(variables, iter) {
+                        println!("Callback returned an error: {}", err);
+                        self.info.set_status(SolverStatus::CallbackTermination);
+                        break;
+                    }
+                }
+            }
 
             self.variables.add_step(&self.step_lhs, α);
 

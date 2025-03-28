@@ -7,6 +7,7 @@ use super::*;
 use crate::{
     algebra::CscMatrix,
     io::*,
+    python::on_iteration::{python_on_iteration_to_rust, PyObjCloneable},
     solver::{
         core::{
             kktsolvers::LinearSolverInfo,
@@ -282,6 +283,7 @@ pub enum PySolverStatus {
     MaxTime,
     NumericalError,
     InsufficientProgress,
+    CallbackTermination,
 }
 
 impl From<&SolverStatus> for PySolverStatus {
@@ -298,6 +300,7 @@ impl From<&SolverStatus> for PySolverStatus {
             SolverStatus::MaxTime => PySolverStatus::MaxTime,
             SolverStatus::NumericalError => PySolverStatus::NumericalError,
             SolverStatus::InsufficientProgress => PySolverStatus::InsufficientProgress,
+            SolverStatus::CallbackTermination => PySolverStatus::CallbackTermination,
         }
     }
 }
@@ -317,6 +320,7 @@ impl PySolverStatus {
             PySolverStatus::MaxTime => "MaxTime",
             PySolverStatus::NumericalError => "NumericalError",
             PySolverStatus::InsufficientProgress => "InsufficientProgress",
+            PySolverStatus::CallbackTermination => "CallbackTermination",
         }
         .to_string()
     }
@@ -438,6 +442,9 @@ pub struct PyDefaultSettings {
     pub chordal_decomposition_compact: bool,
     #[pyo3(get, set)]
     pub chordal_decomposition_complete_dual: bool,
+    // on_iteration field so Python can supply a on_iteration callback.
+    #[pyo3(get, set)]
+    pub on_iteration: Option<PyObjCloneable>,
 }
 
 #[pymethods]
@@ -512,6 +519,8 @@ impl From<&DefaultSettings<f64>> for PyDefaultSettings {
             chordal_decomposition_merge_method: set.chordal_decomposition_merge_method.clone(),
             chordal_decomposition_compact: set.chordal_decomposition_compact,
             chordal_decomposition_complete_dual: set.chordal_decomposition_complete_dual,
+            // Cannot recover a Python on_iteration callback from the internal settings.
+            on_iteration: None,
         }
     }
 }
@@ -563,6 +572,12 @@ impl PyDefaultSettings {
             chordal_decomposition_merge_method: self.chordal_decomposition_merge_method.clone(),
             chordal_decomposition_compact: self.chordal_decomposition_compact,
             chordal_decomposition_complete_dual: self.chordal_decomposition_complete_dual,
+            on_iteration: self.on_iteration.as_ref().map(|cb| {
+                Python::with_gil(|py| {
+                    // Use the wrapper’s clone (which calls clone_ref under the hood)
+                    python_on_iteration_to_rust(cb.clone().into_pyobject(py).unwrap().into())
+                })
+            }),
         };
 
         //manually validate settings from Python side
